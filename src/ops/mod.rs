@@ -1302,26 +1302,26 @@ pub fn intersect_packages(installed: &[RegistryPackage], to_update: &[(String, O
 /// }
 /// ```
 pub fn crate_versions(buf: &[u8]) -> Result<Vec<Semver>, Cow<'static, str>> {
-    buf.split_inclusive(|&b| b == b'\n').try_fold(vec![], |mut acc, p| {
-        crate_version_line(p, &mut acc)?;
-        Ok(acc)
-    })
+    buf.split_inclusive(|&b| b == b'\n').map(crate_version_line).flat_map(Result::transpose).collect()
 }
-fn crate_version_line(line: &[u8], into: &mut Vec<Semver>) -> Result<(), Cow<'static, str>> {
+fn crate_version_line(line: &[u8]) -> Result<Option<Semver>, Cow<'static, str>> {
     if line == b"\n" {
-        return Ok(());
+        return Ok(None);
     }
     match json::from_slice(line).map_err(|e| e.to_string())? {
         json::Value::Object(o) => {
-            if !matches!(o.get("yanked"), Some(&json::Value::Bool(true))) {
-                match o.get("vers").ok_or("no \"vers\" key")? {
-                    json::Value::String(ref v) => into.push(Semver::parse(&v).map_err(|e| e.to_string())?),
-                    _ => Err("\"vers\" not string")?,
-                }
+            if matches!(o.get("yanked"), Some(&json::Value::Bool(true))) {
+                return Ok(None);
             }
-            Ok(())
+
+            let v = match o.get("vers").ok_or("no \"vers\" key")? {
+                json::Value::String(ref v) => v,
+                _ => return Err("\"vers\" not string".into()),
+            };
+
+            Ok(Some(Semver::parse(&v).map_err(|e| e.to_string())?))
         }
-        _ => Err(Cow::from("line not object")),
+        _ => Err("line not object".into()),
     }
 }
 
@@ -1864,7 +1864,7 @@ impl<'m, 'w: 'm, W: Write> CurlHandler for SparseHandler<'m, 'w, W> {
                     buf.extend(l);
                     &buf[..]
                 };
-                crate_version_line(line, &mut vers)?;
+                vers.extend(crate_version_line(line)?);
                 buf.clear();
                 consumed += l.len();
             }
