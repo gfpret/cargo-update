@@ -47,7 +47,7 @@ authors = ["наб <nabijaczleweli@nabijaczleweli.xyz>",
            "Brian"]
 exclude = ["*.enc"]
 edition = '2015'
-rust-version = "1.71.1"
+rust-version = "1.86"
 
 
 [dependencies]
